@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
+import { timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ConvexHttpClient } from "convex/browser";
 import { anyApi } from "convex/server";
-import cors from "cors";
+import cors, { type CorsOptions } from "cors";
 import express, { Request, Response } from "express";
 import { z } from "zod";
 import { env } from "./env.js";
@@ -27,6 +28,11 @@ type OpenAIChatCompletionChunk = {
   }>;
 };
 
+type RateLimitBucket = {
+  count: number;
+  resetAt: number;
+};
+
 const app = express();
 const convex = new ConvexHttpClient(env.CONVEX_URL);
 
@@ -37,19 +43,94 @@ const widgetBundlePath = path.isAbsolute(env.WIDGET_BUNDLE_PATH)
   ? env.WIDGET_BUNDLE_PATH
   : path.resolve(backendDir, env.WIDGET_BUNDLE_PATH);
 
-const allowedOrigins = env.CORS_ORIGIN === "*" ? true : env.CORS_ORIGIN.split(",").map((origin) => origin.trim());
+const configuredOrigins = env.CORS_ORIGIN.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const allowAllOrigins = configuredOrigins.includes("*");
+const allowedOriginSet = new Set(configuredOrigins.filter((origin) => origin !== "*"));
+
+if (env.NODE_ENV === "production" && allowAllOrigins) {
+  throw new Error("Refusing to start with CORS_ORIGIN='*' in production.");
+}
+
+const rateLimitBuckets = new Map<string, RateLimitBucket>();
+
+function getClientIp(req: Request): string {
+  const forwardedFor = req.header("x-forwarded-for");
+  if (forwardedFor) {
+    return forwardedFor.split(",")[0]?.trim() || "unknown";
+  }
+
+  return req.ip || req.socket.remoteAddress || "unknown";
+}
+
+function isWithinRateLimit(req: Request): boolean {
+  const key = getClientIp(req);
+  const now = Date.now();
+  const existing = rateLimitBuckets.get(key);
+
+  if (!existing || now > existing.resetAt) {
+    rateLimitBuckets.set(key, {
+      count: 1,
+      resetAt: now + env.RATE_LIMIT_WINDOW_MS
+    });
+    return true;
+  }
+
+  existing.count += 1;
+  return existing.count <= env.RATE_LIMIT_MAX_REQUESTS;
+}
+
+function isValidWidgetApiKey(apiKey: string): boolean {
+  const expected = Buffer.from(env.WIDGET_API_KEY);
+  const received = Buffer.from(apiKey);
+
+  if (expected.length !== received.length) {
+    return false;
+  }
+
+  return timingSafeEqual(expected, received);
+}
+
+const corsOrigin: CorsOptions["origin"] = (origin, callback) => {
+  if (!origin) {
+    callback(null, true);
+    return;
+  }
+
+  if (allowAllOrigins || allowedOriginSet.has(origin)) {
+    callback(null, true);
+    return;
+  }
+
+  callback(new Error("Blocked by CORS policy"));
+};
+
+app.disable("x-powered-by");
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: corsOrigin,
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "x-widget-api-key"]
   })
 );
+
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  if (env.NODE_ENV === "production") {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  next();
+});
+
 app.use(express.json({ limit: "2mb" }));
 
 const chatRequestSchema = z.object({
-  sessionId: z.string().min(1).max(128),
+  sessionId: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/),
   message: z.string().min(1).max(4000)
 });
 
@@ -58,6 +139,7 @@ function writeStreamLine(res: Response, payload: ChatStreamPayload) {
 }
 
 app.get("/health", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
   res.status(200).json({ status: "ok" });
 });
 
@@ -69,13 +151,23 @@ app.get("/widget/chat-widget.js", (_req, res) => {
     return;
   }
 
+  res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+  res.setHeader(
+    "Cache-Control",
+    env.NODE_ENV === "production" ? "public, max-age=300, immutable" : "no-store"
+  );
   res.sendFile(widgetBundlePath);
 });
 
 app.post("/chat", async (req: Request, res: Response) => {
+  if (!isWithinRateLimit(req)) {
+    res.status(429).json({ error: "Too many requests" });
+    return;
+  }
+
   const apiKey = req.header("x-widget-api-key");
 
-  if (!apiKey || apiKey !== env.WIDGET_API_KEY) {
+  if (!apiKey || !isValidWidgetApiKey(apiKey)) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -83,7 +175,12 @@ app.post("/chat", async (req: Request, res: Response) => {
   const parsed = chatRequestSchema.safeParse(req.body);
 
   if (!parsed.success) {
-    res.status(400).json({ error: "Invalid request payload", details: parsed.error.flatten() });
+    if (env.NODE_ENV === "development") {
+      res.status(400).json({ error: "Invalid request payload", details: parsed.error.flatten() });
+      return;
+    }
+
+    res.status(400).json({ error: "Invalid request payload" });
     return;
   }
 
@@ -110,7 +207,7 @@ app.post("/chat", async (req: Request, res: Response) => {
 
     res.status(200);
     res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Cache-Control", "no-store, no-transform");
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
 

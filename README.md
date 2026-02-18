@@ -255,5 +255,8 @@ Set dashboard environment variables:
 
 - Rotate `WIDGET_API_KEY` and `DASHBOARD_PASSWORD` regularly.
 - Keep `OPENAI_API_KEY` server-side only.
-- Restrict `CORS_ORIGIN` to known domains only.
+- Restrict `CORS_ORIGIN` to known domains only. In production, `*` is rejected.
 - Serve backend and dashboard over HTTPS.
+- Backend includes request-rate limiting (`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`).
+- API key and dashboard password checks use timing-safe comparison.
+- Security headers are set on backend and dashboard responses (`X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS in production).

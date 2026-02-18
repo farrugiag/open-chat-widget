@@ -14,7 +14,7 @@
     "dev:dashboard": "npm run dev --workspace dashboard",
     "dev:widget": "npm run dev --workspace widget",
     "codegen": "convex codegen",
-    "build:backend": "npm run codegen && npm run build --workspace widget && npm run build --workspace backend",
+    "build:backend": "npm run build --workspace widget && npm run build --workspace backend",
     "build:dashboard": "npm run build --workspace dashboard",
     "build": "npm run codegen && npm run build --workspace widget && npm run build --workspace backend && npm run build --workspace dashboard",
     "start:backend": "npm run start --workspace backend",

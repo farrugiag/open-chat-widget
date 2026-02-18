@@ -18,10 +18,12 @@ const envSchema = z.object({
   CONVEX_URL: z.string().min(1),
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().min(1).default("gpt-4.1-mini"),
-  WIDGET_API_KEY: z.string().min(1),
+  WIDGET_API_KEY: z.string().min(24),
   CORS_ORIGIN: z.string().default("*"),
   WIDGET_BUNDLE_PATH: z.string().default("../widget/dist/chat-widget.js"),
-  MAX_HISTORY_MESSAGES: z.coerce.number().int().positive().default(30)
+  MAX_HISTORY_MESSAGES: z.coerce.number().int().positive().default(30),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(30)
 });
 
 export const env = envSchema.parse(process.env);

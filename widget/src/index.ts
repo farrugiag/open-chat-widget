@@ -16,6 +16,7 @@ type StreamEvent =
 
 const ROOT_ID = "os-chat-widget-root";
 const SESSION_STORAGE_KEY = "os-chatbot-session-id";
+const OPEN_STATE_STORAGE_KEY = "os-chatbot-widget-open";
 
 function resolveScriptElement(): HTMLScriptElement | null {
   if (document.currentScript instanceof HTMLScriptElement) {
@@ -210,6 +211,18 @@ function createStyles(accentColor: string): string {
       cursor: not-allowed;
     }
 
+    #${ROOT_ID} .osw-retry {
+      margin-top: 8px;
+      border: none;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      background: #0f172a;
+      color: #f8fafc;
+    }
+
     @keyframes osw-fade-in {
       from {
         opacity: 0;
@@ -248,6 +261,10 @@ function parseJsonLine(line: string): StreamEvent | null {
   }
 }
 
+function getInitialOpenState(): boolean {
+  return localStorage.getItem(OPEN_STATE_STORAGE_KEY) === "true";
+}
+
 function bootstrapWidget() {
   if (document.getElementById(ROOT_ID)) {
     return;
@@ -265,7 +282,7 @@ function bootstrapWidget() {
 
   const root = document.createElement("div");
   root.id = ROOT_ID;
-  root.dataset.open = "false";
+  root.dataset.open = getInitialOpenState() ? "true" : "false";
   root.dataset.position = config.position;
 
   const style = document.createElement("style");
@@ -301,7 +318,7 @@ function bootstrapWidget() {
   const toggleButton = document.createElement("button");
   toggleButton.className = "osw-toggle";
   toggleButton.type = "button";
-  toggleButton.textContent = "AI";
+  toggleButton.setAttribute("aria-label", "Toggle chat");
 
   form.append(input, sendButton);
   inputWrap.append(form);
@@ -311,6 +328,12 @@ function bootstrapWidget() {
 
   function scrollToBottom() {
     messages.scrollTop = messages.scrollHeight;
+  }
+
+  function setOpenState(isOpen: boolean) {
+    root.dataset.open = isOpen ? "true" : "false";
+    toggleButton.textContent = isOpen ? "×" : "AI";
+    localStorage.setItem(OPEN_STATE_STORAGE_KEY, isOpen ? "true" : "false");
   }
 
   function addMessage(role: "user" | "assistant", text: string): HTMLDivElement {
@@ -323,10 +346,37 @@ function bootstrapWidget() {
   }
 
   addMessage("assistant", config.welcomeMessage);
+  setOpenState(root.dataset.open === "true");
+
+  function startTypingIndicator(target: HTMLDivElement): () => void {
+    const frames = ["Thinking", "Thinking.", "Thinking..", "Thinking..."];
+    let frameIndex = 0;
+
+    target.textContent = `${frames[frameIndex]}`;
+
+    const timer = window.setInterval(() => {
+      frameIndex = (frameIndex + 1) % frames.length;
+      target.textContent = `${frames[frameIndex]}`;
+    }, 320);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }
 
   async function submitMessage(rawText: string) {
     addMessage("user", rawText);
-    const assistantMessageEl = addMessage("assistant", "Thinking...");
+    const assistantMessageEl = addMessage("assistant", "");
+    const stopTypingIndicator = startTypingIndicator(assistantMessageEl);
+    let indicatorStopped = false;
+
+    const stopIndicatorOnce = () => {
+      if (indicatorStopped) {
+        return;
+      }
+      indicatorStopped = true;
+      stopTypingIndicator();
+    };
 
     sendButton.disabled = true;
     input.disabled = true;
@@ -361,18 +411,21 @@ function bootstrapWidget() {
         }
 
         if (payload.type === "token") {
+          stopIndicatorOnce();
           assembled += payload.token;
           assistantMessageEl.textContent = assembled;
           scrollToBottom();
         }
 
         if (payload.type === "done") {
+          stopIndicatorOnce();
           assistantMessageEl.textContent = payload.message;
           assembled = payload.message;
           scrollToBottom();
         }
 
         if (payload.type === "error") {
+          stopIndicatorOnce();
           assistantMessageEl.textContent = payload.error;
           scrollToBottom();
         }
@@ -411,12 +464,28 @@ function bootstrapWidget() {
       }
 
       if (!assistantMessageEl.textContent) {
+        stopIndicatorOnce();
         assistantMessageEl.textContent = "I could not generate a response right now.";
       }
     } catch (error) {
+      stopIndicatorOnce();
       console.error("[os-chat-widget] Failed to send message", error);
       assistantMessageEl.textContent = "Something went wrong. Please try again.";
+
+      const retryButton = document.createElement("button");
+      retryButton.type = "button";
+      retryButton.className = "osw-retry";
+      retryButton.textContent = "Retry";
+      retryButton.addEventListener("click", async () => {
+        retryButton.disabled = true;
+        retryButton.textContent = "Retrying...";
+        await submitMessage(rawText);
+      });
+
+      assistantMessageEl.appendChild(document.createElement("br"));
+      assistantMessageEl.appendChild(retryButton);
     } finally {
+      stopIndicatorOnce();
       sendButton.disabled = false;
       input.disabled = false;
       input.focus();
@@ -437,7 +506,7 @@ function bootstrapWidget() {
 
   toggleButton.addEventListener("click", () => {
     const isOpen = root.dataset.open === "true";
-    root.dataset.open = isOpen ? "false" : "true";
+    setOpenState(!isOpen);
 
     if (!isOpen) {
       input.focus();

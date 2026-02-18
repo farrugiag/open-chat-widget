@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Headless Chat API Test</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: #f8fafc;
+        color: #0f172a;
+      }
+
+      main {
+        max-width: 860px;
+        margin: 0 auto;
+      }
+
+      .panel {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 12px;
+      }
+
+      @media (min-width: 900px) {
+        .grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+
+      input,
+      textarea,
+      select,
+      button {
+        width: 100%;
+        font: inherit;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        padding: 10px 12px;
+        box-sizing: border-box;
+      }
+
+      textarea {
+        min-height: 90px;
+        resize: vertical;
+      }
+
+      button {
+        border: none;
+        background: #0f172a;
+        color: #ffffff;
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .messages {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 420px;
+        overflow: auto;
+      }
+
+      .bubble {
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid #cbd5e1;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .bubble.user {
+        background: #111827;
+        color: #f8fafc;
+        border-color: #111827;
+      }
+
+      .bubble.assistant {
+        background: #e0f2fe;
+        color: #0c4a6e;
+        border-color: #bae6fd;
+      }
+
+      .meta {
+        margin-top: 12px;
+        font-size: 12px;
+        color: #475569;
+      }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Headless Chat API Test</h1>
+      <p>
+        This page talks directly to your backend API (no widget script). Use it to test
+        <code>/v1/chat</code> or <code>/v1/chat/stream</code>.
+      </p>
+
+      <section class="panel grid">
+        <div>
+          <label for="apiUrl">API URL</label>
+          <input id="apiUrl" value="http://localhost:4000" />
+        </div>
+        <div>
+          <label for="apiKey">x-api-key (or widget key)</label>
+          <input id="apiKey" value="" placeholder="Paste your real WIDGET_API_KEY" />
+        </div>
+        <div>
+          <label for="sessionId">Session ID</label>
+          <input id="sessionId" value="headless-test-session" />
+        </div>
+        <div>
+          <label for="mode">Response mode</label>
+          <select id="mode">
+            <option value="stream">stream (/v1/chat/stream)</option>
+            <option value="json">json (/v1/chat)</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="messages" id="messages"></div>
+        <div class="meta" id="meta"></div>
+      </section>
+
+      <section class="panel">
+        <label for="message">Message</label>
+        <textarea id="message" placeholder="Type a message">Hello from headless chat.</textarea>
+        <div style="margin-top: 12px; display: flex; gap: 8px">
+          <button id="sendButton">Send</button>
+          <button id="clearButton" type="button">Clear</button>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const API_KEY_STORAGE_KEY = "os-chatbot-headless-api-key";
+      const messagesEl = document.getElementById("messages");
+      const metaEl = document.getElementById("meta");
+      const sendButton = document.getElementById("sendButton");
+      const clearButton = document.getElementById("clearButton");
+      const apiKeyInput = document.getElementById("apiKey");
+
+      const savedApiKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+      if (savedApiKey) {
+        apiKeyInput.value = savedApiKey;
+      }
+
+      function addBubble(role, text) {
+        const bubble = document.createElement("div");
+        bubble.className = `bubble ${role}`;
+        bubble.textContent = text;
+        messagesEl.appendChild(bubble);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        return bubble;
+      }
+
+      function setMeta(text) {
+        metaEl.textContent = text;
+      }
+
+      function parseLine(line) {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      }
+
+      async function sendMessage() {
+        const baseUrl = document.getElementById("apiUrl").value.trim().replace(/\/$/, "");
+        const apiKey = apiKeyInput.value.trim();
+        const sessionId = document.getElementById("sessionId").value.trim();
+        const mode = document.getElementById("mode").value;
+        const message = document.getElementById("message").value.trim();
+
+        if (!baseUrl || !apiKey || !sessionId || !message) {
+          setMeta("Please fill API URL, API key, session ID, and message.");
+          return;
+        }
+        if (apiKey === "change-me-widget-key") {
+          setMeta("Use your real WIDGET_API_KEY (the placeholder key will return 401).");
+          return;
+        }
+
+        localStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
+
+        sendButton.disabled = true;
+        setMeta("Sending...");
+
+        addBubble("user", message);
+        const assistantBubble = addBubble("assistant", "Thinking...");
+
+        const endpoint = mode === "stream" ? `${baseUrl}/v1/chat/stream` : `${baseUrl}/v1/chat`;
+
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": apiKey
+            },
+            body: JSON.stringify({ sessionId, message })
+          });
+
+          if (!response.ok) {
+            const errText = await response.text();
+            if (response.status === 401) {
+              setMeta("Unauthorized: check your x-api-key value.");
+            }
+            throw new Error(`HTTP ${response.status}: ${errText}`);
+          }
+
+          if (mode === "json") {
+            const payload = await response.json();
+            assistantBubble.textContent = payload.message || "No message returned";
+            setMeta(`Conversation: ${payload.conversationId || "unknown"}`);
+            return;
+          }
+
+          if (!response.body) {
+            throw new Error("No response body");
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let assembled = "";
+          let conversationId = "";
+
+          const processLine = (line) => {
+            const event = parseLine(line);
+            if (!event) {
+              return;
+            }
+
+            if (event.type === "start") {
+              conversationId = event.conversationId || conversationId;
+              setMeta(`Conversation: ${conversationId}`);
+              return;
+            }
+
+            if (event.type === "token") {
+              assembled += event.token || "";
+              assistantBubble.textContent = assembled;
+              return;
+            }
+
+            if (event.type === "done") {
+              assistantBubble.textContent = event.message || assembled || "No message";
+              if (event.conversationId) {
+                conversationId = event.conversationId;
+              }
+              setMeta(`Conversation: ${conversationId || "unknown"}`);
+              return;
+            }
+
+            if (event.type === "error") {
+              assistantBubble.textContent = event.error || "Error";
+            }
+          };
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              break;
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+
+            while (true) {
+              const newline = buffer.indexOf("\n");
+              if (newline === -1) {
+                break;
+              }
+
+              const line = buffer.slice(0, newline).trim();
+              buffer = buffer.slice(newline + 1);
+
+              if (line) {
+                processLine(line);
+              }
+            }
+          }
+
+          const trailing = buffer.trim();
+          if (trailing) {
+            processLine(trailing);
+          }
+
+          if (!assistantBubble.textContent || assistantBubble.textContent === "Thinking...") {
+            assistantBubble.textContent = "No response returned";
+          }
+        } catch (error) {
+          assistantBubble.textContent = `Error: ${error.message}`;
+          setMeta("Request failed");
+        } finally {
+          sendButton.disabled = false;
+        }
+      }
+
+      sendButton.addEventListener("click", () => {
+        sendMessage();
+      });
+
+      clearButton.addEventListener("click", () => {
+        messagesEl.innerHTML = "";
+        setMeta("");
+      });
+    </script>
+  </body>
+</html>

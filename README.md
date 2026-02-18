@@ -2,9 +2,10 @@
 
 Complete full-stack project with:
 - Embeddable vanilla TypeScript widget (single bundle)
-- Node.js backend API for `/chat` with OpenAI streaming
-- Convex database schema/functions for conversations and messages
-- Next.js admin dashboard with static-password login
+- Headless chat API for custom frontends (`/v1/chat`, `/v1/chat/stream`)
+- Node.js backend API with OpenAI streaming
+- Convex schema/functions for conversations and messages
+- Next.js admin dashboard with password login
 - Docker setup for local self-hosting
 
 ## Project Structure
@@ -23,26 +24,11 @@ Complete full-stack project with:
 │   └── schema.ts
 ├── dashboard
 │   ├── app
-│   │   ├── api
-│   │   │   ├── login
-│   │   │   │   └── route.ts
-│   │   │   └── logout
-│   │   │       └── route.ts
-│   │   ├── conversations
-│   │   │   └── [id]
-│   │   │       └── page.tsx
-│   │   ├── login
-│   │   │   └── page.tsx
-│   │   ├── globals.css
-│   │   ├── layout.tsx
-│   │   └── page.tsx
 │   ├── components
-│   │   └── login-form.tsx
 │   ├── lib
-│   │   ├── auth.ts
-│   │   └── convex.ts
-│   ├── next-env.d.ts
-│   ├── next.config.mjs
+│   ├── public
+│   │   ├── headless-test.html
+│   │   └── widget-test.html
 │   ├── package.json
 │   └── tsconfig.json
 ├── widget
@@ -51,12 +37,9 @@ Complete full-stack project with:
 │   ├── src
 │   │   └── index.ts
 │   └── tsconfig.json
-├── .dockerignore
 ├── .env.example
-├── .gitignore
-├── convex.json
-├── docker-compose.yml
 ├── Dockerfile
+├── docker-compose.yml
 └── package.json
 ```
 
@@ -79,6 +62,9 @@ Set required values in `.env`:
 - `WIDGET_API_KEY`
 - `DASHBOARD_PASSWORD`
 
+Optional:
+- `ADMIN_API_KEY` (required only for `/v1/admin/*` endpoints)
+
 ## 2) Install Dependencies
 
 ```bash
@@ -93,7 +79,7 @@ Generate Convex types once:
 npm run codegen
 ```
 
-Then run Convex in dev mode:
+Run Convex dev:
 
 ```bash
 npm run dev:convex
@@ -112,7 +98,12 @@ Services:
 - Dashboard: `http://localhost:3000`
 - Widget bundle: `http://localhost:4000/widget/chat-widget.js`
 
-## 5) Embed Widget
+## 5) Test Pages
+
+- Widget test page: `http://localhost:3000/widget-test.html`
+- Headless API test page: `http://localhost:3000/headless-test.html`
+
+## 6) Embed Widget
 
 ```html
 <script
@@ -130,12 +121,23 @@ Services:
 
 ## API
 
-### `POST /chat`
-Headers:
-- `Content-Type: application/json`
-- `x-widget-api-key: <WIDGET_API_KEY>`
+### Base endpoints
 
-Body:
+- `GET /health`
+- `GET /widget/chat-widget.js`
+- `GET /v1/openapi.json`
+
+### Chat endpoints
+
+- `POST /chat` (legacy widget-compatible streaming alias)
+- `POST /v1/chat` (headless JSON response)
+- `POST /v1/chat/stream` (headless NDJSON stream)
+
+Chat auth headers (either works):
+- `x-widget-api-key: <WIDGET_API_KEY>`
+- `x-api-key: <WIDGET_API_KEY>`
+
+Chat body:
 
 ```json
 {
@@ -144,11 +146,63 @@ Body:
 }
 ```
 
-Response: NDJSON stream with events:
-- `{"type":"start", ...}`
-- `{"type":"token", ...}`
-- `{"type":"done", ...}`
-- `{"type":"error", ...}`
+`POST /v1/chat` response:
+
+```json
+{
+  "conversationId": "...",
+  "message": "..."
+}
+```
+
+`POST /v1/chat/stream` response events (NDJSON):
+- `{"type":"start","conversationId":"..."}`
+- `{"type":"token","token":"..."}`
+- `{"type":"done","message":"...","conversationId":"..."}`
+- `{"type":"error","error":"..."}`
+
+### Admin conversation endpoints
+
+Requires header:
+- `x-admin-api-key: <ADMIN_API_KEY>`
+
+Endpoints:
+- `GET /v1/admin/conversations?limit=100`
+- `GET /v1/admin/conversations/:conversationId`
+
+## Headless Frontend Example (No Widget)
+
+Non-streaming:
+
+```ts
+await fetch("https://<backend-domain>/v1/chat", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-api-key": "<WIDGET_API_KEY>"
+  },
+  body: JSON.stringify({
+    sessionId: "my-session-id",
+    message: "Hello"
+  })
+});
+```
+
+Streaming:
+
+```ts
+await fetch("https://<backend-domain>/v1/chat/stream", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-api-key": "<WIDGET_API_KEY>"
+  },
+  body: JSON.stringify({
+    sessionId: "my-session-id",
+    message: "Hello"
+  })
+});
+```
 
 ## Dashboard Login
 
@@ -156,8 +210,6 @@ Response: NDJSON stream with events:
 - Password: `DASHBOARD_PASSWORD`
 
 ## Docker
-
-Build and run backend + dashboard:
 
 ```bash
 docker compose up --build
@@ -167,38 +219,28 @@ Services:
 - Backend: `http://localhost:4000`
 - Dashboard: `http://localhost:3000`
 
-Make sure your `.env` is configured and reachable by containers.
+## Deployment Setup
 
-## Deployment Setup (Open-Source Usage)
+Recommended architecture per adopter:
+- 1 Convex project
+- 1 backend deployment
+- 1 dashboard deployment (optional)
+- Any website/app embedding widget or calling headless API
 
-Recommended architecture for each adopter:
-- One Convex project per deployment (database + functions).
-- One backend deployment (serves `/chat` + `/widget/chat-widget.js`).
-- One dashboard deployment (optional, for conversation viewing).
-- Embed script added to any external website.
-
-### 1) Push repo to GitHub
-
-- Push this codebase to your own GitHub repo.
-
-### 2) Create Convex production deployment
-
-From repo root:
+### Convex
 
 ```bash
 npx convex deploy
 ```
 
-Copy your production Convex URL (looks like `https://<name>.convex.cloud`).
+### Backend deployment (Render/Railway/Fly/Node host)
 
-### 3) Deploy backend (example: Render/Railway/Fly/any Node host)
-
-Use repo root as the app root.
+Use repo root.
 
 Build command:
 
 ```bash
-npm install && npm run build:backend
+npm install --include=dev && npm run build:backend
 ```
 
 Start command:
@@ -207,56 +249,41 @@ Start command:
 npm run start:backend
 ```
 
-Set backend environment variables:
+Backend env vars:
 - `NODE_ENV=production`
 - `CONVEX_URL=https://<your-production>.convex.cloud`
 - `OPENAI_API_KEY=<your-openai-key>`
-- `OPENAI_MODEL=gpt-4.1-mini` (or your preferred model)
+- `OPENAI_MODEL=gpt-4.1-mini`
 - `WIDGET_API_KEY=<strong-random-secret>`
-- `DASHBOARD_PASSWORD=<strong-random-password>`
+- `ADMIN_API_KEY=<strong-random-secret>` (optional, needed for `/v1/admin/*`)
 - `CORS_ORIGIN=https://your-site.com,https://your-dashboard-domain.com`
-- `WIDGET_BUNDLE_PATH=../widget/dist/chat-widget.js`
+- `PORT=4000`
 
-### 4) Deploy dashboard (example: Vercel)
+### Dashboard deployment (Vercel)
 
-Import the same GitHub repo into Vercel:
 - Root Directory: `dashboard`
 - Framework: Next.js
 
-Set dashboard environment variables:
+Dashboard env vars:
 - `CONVEX_URL=https://<your-production>.convex.cloud`
-- `DASHBOARD_PASSWORD=<same-admin-password>`
+- `DASHBOARD_PASSWORD=<strong-random-password>`
 - `NEXT_PUBLIC_BACKEND_URL=https://<your-backend-domain>`
 
-### 5) Embed widget on any website
+### Production smoke tests
 
-```html
-<script
-  src="https://<your-backend-domain>/widget/chat-widget.js"
-  data-api-url="https://<your-backend-domain>/chat"
-  data-api-key="<your-widget-api-key>"
-  data-title="Support"
-  data-welcome-message="Hi! How can I help?"
-  data-input-placeholder="Type your question..."
-  data-position="right"
-  data-accent-color="#0ea5e9"
-  defer
-></script>
-```
-
-### 6) Production smoke tests
-
-- `GET https://<backend-domain>/health` returns `{"status":"ok"}`.
-- `POST https://<backend-domain>/chat` with valid `x-widget-api-key` streams NDJSON.
-- Dashboard login works at `/login`.
-- New widget message appears in dashboard conversations.
+- `GET https://<backend>/health` returns `{"status":"ok"}`
+- `GET https://<backend>/widget/chat-widget.js` returns JavaScript
+- `POST https://<backend>/v1/chat` returns JSON reply
+- `POST https://<backend>/v1/chat/stream` streams NDJSON
+- `GET https://<backend>/v1/openapi.json` returns OpenAPI document
+- Dashboard login works at `/login`
 
 ## Security Notes
 
-- Rotate `WIDGET_API_KEY` and `DASHBOARD_PASSWORD` regularly.
+- Rotate `WIDGET_API_KEY`, `ADMIN_API_KEY`, and `DASHBOARD_PASSWORD`.
 - Keep `OPENAI_API_KEY` server-side only.
-- Restrict `CORS_ORIGIN` to known domains only. In production, `*` is rejected.
+- Restrict `CORS_ORIGIN` to trusted domains. In production, `*` is rejected.
 - Serve backend and dashboard over HTTPS.
-- Backend includes request-rate limiting (`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`).
-- API key and dashboard password checks use timing-safe comparison.
-- Security headers are set on backend and dashboard responses (`X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS in production).
+- Backend includes rate limiting (`RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX_REQUESTS`).
+- API key/password checks use timing-safe comparison.
+- Security headers are enabled (`X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`, HSTS in production).

@@ -19,6 +19,7 @@ const envSchema = z.object({
   OPENAI_API_KEY: z.string().min(1),
   OPENAI_MODEL: z.string().min(1).default("gpt-4.1-mini"),
   WIDGET_API_KEY: z.string().min(24),
+  ADMIN_API_KEY: z.string().min(24).optional(),
   CORS_ORIGIN: z.string().default("*"),
   WIDGET_BUNDLE_PATH: z.string().default("../widget/dist/chat-widget.js"),
   MAX_HISTORY_MESSAGES: z.coerce.number().int().positive().default(30),

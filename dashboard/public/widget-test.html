@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Widget Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 2rem;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: #f8fafc;
+        color: #0f172a;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Widget Test Page</h1>
+    <p>The chat bubble should appear in the bottom-right corner.</p>
+
+    <script
+      src="http://localhost:4000/widget/chat-widget.js"
+      data-api-url="http://localhost:4000/chat"
+      data-api-key="6c3c512305e3044450514398f6a54224f83ec68f82d776efe8cff8d327098d1a"
+      data-title="Support"
+      data-welcome-message="Hi! How can I help?"
+      data-input-placeholder="Type your question..."
+      data-position="right"
+      data-accent-color="#0ea5e9"
+      defer
+    ></script>
+  </body>
+</html>

@@ -1,0 +1,192 @@
+:root {
+  --ink-900: #0f172a;
+  --ink-700: #334155;
+  --ink-500: #64748b;
+  --sky-500: #0284c7;
+  --sky-100: #e0f2fe;
+  --card: #ffffff;
+  --line: #d9e2ec;
+  --bg-a: #f8fafc;
+  --bg-b: #ecfeff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: radial-gradient(circle at 10% 10%, var(--bg-b), var(--bg-a) 48%);
+  color: var(--ink-900);
+  font-family: "Space Grotesk", "Avenir Next", sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.page-wrap {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 30px 18px 48px;
+}
+
+.headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.headline h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.subtle {
+  color: var(--ink-500);
+  font-size: 14px;
+}
+
+.logout-btn,
+.auth-card button {
+  border: none;
+  border-radius: 10px;
+  background: var(--ink-900);
+  color: #fff;
+  padding: 10px 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.list {
+  display: grid;
+  gap: 12px;
+}
+
+.card {
+  background: linear-gradient(140deg, var(--card), #f8fbff);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(2, 132, 199, 0.08);
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.card-time {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+
+.card-last {
+  font-size: 14px;
+  color: var(--ink-700);
+}
+
+.thread {
+  display: grid;
+  gap: 12px;
+}
+
+.thread-message {
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #fff;
+  white-space: pre-wrap;
+}
+
+.thread-message.user {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.thread-message.assistant {
+  border-color: #bae6fd;
+  background: #f0f9ff;
+}
+
+.thread-meta {
+  font-size: 12px;
+  color: var(--ink-500);
+  margin-bottom: 6px;
+}
+
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.auth-card {
+  width: min(420px, 100%);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 16px 40px rgba(2, 132, 199, 0.12);
+  padding: 24px;
+  display: grid;
+  gap: 10px;
+}
+
+.auth-card h1 {
+  margin: 0;
+}
+
+.auth-card p {
+  margin: 0;
+  color: var(--ink-500);
+  font-size: 14px;
+}
+
+.auth-card label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-700);
+}
+
+.auth-card input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.error {
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.back-link {
+  font-size: 14px;
+  color: var(--sky-500);
+}
+
+@media (max-width: 700px) {
+  .headline {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .headline h1 {
+    font-size: 24px;
+  }
+}

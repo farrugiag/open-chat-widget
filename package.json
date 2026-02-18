@@ -1,0 +1,28 @@
+{
+  "name": "os-chatbot",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "backend",
+    "dashboard",
+    "widget"
+  ],
+  "scripts": {
+    "dev": "concurrently -k \"npm run dev:convex\" \"npm run dev:backend\" \"npm run dev:dashboard\" \"npm run dev:widget\"",
+    "dev:convex": "convex dev",
+    "dev:backend": "npm run dev --workspace backend",
+    "dev:dashboard": "npm run dev --workspace dashboard",
+    "dev:widget": "npm run dev --workspace widget",
+    "codegen": "convex codegen",
+    "build:backend": "npm run codegen && npm run build --workspace widget && npm run build --workspace backend",
+    "build:dashboard": "npm run build --workspace dashboard",
+    "build": "npm run codegen && npm run build --workspace widget && npm run build --workspace backend && npm run build --workspace dashboard",
+    "start:backend": "npm run start --workspace backend",
+    "start:dashboard": "npm run start --workspace dashboard"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "convex": "^1.31.7"
+  }
+}
